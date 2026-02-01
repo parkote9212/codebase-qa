@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+/* Tailwind v4: .dark 클래스 기준으로 dark: 변형 활성화 (config 대신 CSS에서 정의) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 커스텀 dark 팔레트 (Tailwind v4 @theme) */
+@theme {
+  --color-dark-50: #f7f7f8;
+  --color-dark-100: #ececf1;
+  --color-dark-200: #d9d9e3;
+  --color-dark-300: #c5c5d2;
+  --color-dark-400: #acacbe;
+  --color-dark-500: #8e8ea0;
+  --color-dark-600: #565869;
+  --color-dark-700: #40414f;
+  --color-dark-800: #343541;
+  --color-dark-900: #202123;
+  --color-dark-950: #0d0d0d;
+}
+
+/* 라이트/다크: html.dark 는 Pinia theme 스토어에서 토글 */
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-gray-50 text-gray-900 dark:bg-dark-900 dark:text-gray-100;
+  margin: 0;
+  min-height: 100vh;
+}
+
+#app {
+  @apply min-h-screen;
+}
+
+/* 스크롤바: 라이트/다크 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-200 dark:bg-dark-800;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-400 rounded dark:bg-dark-600;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-500 dark:bg-dark-500;
+}
+
+/* 코드 블록: 라이트/다크 */
+pre code.hljs {
+  @apply rounded-lg p-4 text-sm bg-gray-100 text-gray-900 dark:bg-dark-950 dark:text-gray-300;
+}
+
+/* 마크다운: 라이트/다크 */
+.prose {
+  @apply text-gray-800 dark:text-gray-200;
+}
+
+.prose code {
+  @apply px-1.5 py-0.5 rounded text-sm bg-gray-200 text-blue-700 dark:bg-dark-700 dark:text-blue-300;
+}
+
+.prose pre {
+  @apply overflow-x-auto bg-gray-100 rounded-lg dark:bg-dark-950;
+}
+
+.prose p {
+  @apply mb-3;
+}
+
+.prose ul, .prose ol {
+  @apply mb-3 pl-5;
+}
+
+.prose li {
+  @apply mb-1;
+}

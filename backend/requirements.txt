@@ -1,0 +1,19 @@
+# FastAPI
+fastapi==0.109.0
+uvicorn==0.27.0
+python-multipart==0.0.6
+sse-starlette==1.8.2
+
+# Vector DB
+chromadb==0.4.22
+
+# Embedding (huggingface_hub<0.26: sentence-transformers 2.x가 cached_download 사용)
+huggingface_hub<0.26
+sentence-transformers==2.2.2
+
+# HTTP Client
+httpx==0.26.0
+
+# Utilities
+pydantic==2.5.3
+pydantic-settings==2.1.0
