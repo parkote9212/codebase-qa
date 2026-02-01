@@ -15,6 +15,11 @@ const props = defineProps({
     type: Object,
     required: true,
   },
+  /** 스트리밍 중인 마지막 어시스턴트 메시지일 때 true */
+  isStreaming: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const showSources = ref(false)
@@ -163,9 +168,9 @@ async function handleRetry() {
       <!-- 메시지 내용 -->
       <div class="space-y-3">
         <template v-for="(part, index) in parsedContent" :key="index">
-          <!-- 텍스트 -->
+          <!-- 텍스트 (빈 내용 + 스트리밍 중일 때는 아래 로딩 표시) -->
           <div
-            v-if="part.type === 'text'"
+            v-if="part.type === 'text' && (part.content || !isStreaming)"
             class="text-sm text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-wrap"
             v-html="parseMarkdown(part.content)"
           ></div>
@@ -177,6 +182,17 @@ async function handleRetry() {
             :language="part.language"
           />
         </template>
+        <!-- 스트리밍 중이고 아직 내용이 없을 때 -->
+        <div v-if="isStreaming && !message.content" class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+          <div class="flex space-x-1">
+            <div class="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+            <div class="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+            <div class="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+          </div>
+          <span>답변 생성 중...</span>
+        </div>
+        <!-- 스트리밍 중이고 내용이 있을 때 커서 -->
+        <span v-else-if="isStreaming && message.content" class="inline-block w-2 h-4 ml-0.5 bg-blue-500 dark:bg-blue-400 animate-pulse align-middle"></span>
       </div>
 
       <!-- 에러 재시도 버튼 -->

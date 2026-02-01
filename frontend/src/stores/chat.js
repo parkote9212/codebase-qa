@@ -6,7 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import {
-  queryCode,
+  queryCodeStream,
   getStatus,
   indexCode,
   deleteIndex,
@@ -150,36 +150,48 @@ export const useChatStore = defineStore('chat', () => {
     // 로딩 시작
     isLoading.value = true
 
+    const sessionForResponse = sessions.value.find(s => s.id === currentSessionId.value)
+    if (!sessionForResponse) {
+      isLoading.value = false
+      return
+    }
+
+    // 빈 어시스턴트 메시지 추가 (스트리밍으로 타자치듯 채움)
+    const assistantMessage = {
+      id: Date.now() + 1,
+      role: 'assistant',
+      content: '',
+      sources: [],
+      model: '',
+      timestamp: new Date(),
+    }
+    sessionForResponse.messages.push(assistantMessage)
+
     try {
-      const response = await queryCode(content)
-
-      // AI 응답 추가
-      const assistantMessage = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: response.answer,
-        sources: response.sources || [],
-        model: response.model,
-        timestamp: new Date(),
-      }
-      const sessionForResponse = sessions.value.find(s => s.id === currentSessionId.value)
-      if (sessionForResponse) {
-        sessionForResponse.messages.push(assistantMessage)
-      }
-
+      await queryCodeStream(content, 5, {
+        onMessage: (chunk) => {
+          const session = sessions.value.find(s => s.id === currentSessionId.value)
+          const msg = session?.messages?.find(m => m.id === assistantMessage.id)
+          if (msg) msg.content += chunk
+        },
+        onError: (error) => {
+          const msg = sessionForResponse.messages.find(m => m.id === assistantMessage.id)
+          if (msg) {
+            msg.content = `오류가 발생했습니다: ${error.message}`
+            msg.isError = true
+            msg.originalQuestion = content.trim()
+          }
+        },
+        onDone: () => {
+          isLoading.value = false
+        },
+      })
     } catch (error) {
-      // 에러 메시지 추가 (재시도용 원본 질문 포함)
-      const errorMessage = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: `오류가 발생했습니다: ${error.response?.data?.detail || error.message}`,
-        isError: true,
-        originalQuestion: content.trim(),  // 재시도용 원본 질문 저장
-        timestamp: new Date(),
-      }
-      const sessionForError = sessions.value.find(s => s.id === currentSessionId.value)
-      if (sessionForError) {
-        sessionForError.messages.push(errorMessage)
+      const msg = sessionForResponse.messages.find(m => m.id === assistantMessage.id)
+      if (msg) {
+        msg.content = `오류가 발생했습니다: ${error.response?.data?.detail || error.message}`
+        msg.isError = true
+        msg.originalQuestion = content.trim()
       }
     } finally {
       isLoading.value = false

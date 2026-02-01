@@ -612,33 +612,55 @@ async def query(request: QueryRequest):
     description="답변을 SSE로 토큰 단위 스트리밍. 이벤트: `message`(텍스트), `done`, `error`.",
 )
 async def query_stream(request: QueryRequest):
+    import asyncio
+    from starlette.responses import StreamingResponse
+
     rag_chain = get_rag_chain()
     rag_chain.top_k = request.top_k
+    question = request.question
 
     async def generate():
         full_answer = []
+        queue = asyncio.Queue()
+        loop = asyncio.get_event_loop()
+
+        def run_sync_stream():
+            """동기 제너레이터를 스레드에서 실행해 청크를 큐에 넣음 (이벤트 루프 블로킹 방지)"""
+            try:
+                for chunk in rag_chain.query_stream(question):
+                    loop.call_soon_threadsafe(queue.put_nowait, chunk)
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+            except Exception as e:
+                loop.call_soon_threadsafe(queue.put_nowait, e)
+
+        loop.run_in_executor(None, run_sync_stream)
         try:
-            for chunk in rag_chain.query_stream(request.question):
+            while True:
+                chunk = await queue.get()
+                if chunk is None:
+                    break
+                if isinstance(chunk, Exception):
+                    yield f"event: error\ndata: {str(chunk)}\n\n"
+                    return
                 full_answer.append(chunk)
-                yield {
-                    "event": "message",
-                    "data": chunk,
-                }
-            yield {
-                "event": "done",
-                "data": "[DONE]",
-            }
-
-            # 스트리밍 완료 후 로그 저장
-            log_query(request.question, "".join(full_answer), get_llm().model)
-
+                # 줄바꿈은 여러 data: 라인으로 분리
+                lines = chunk.split('\n')
+                data_part = '\n'.join(f"data: {line}" for line in lines)
+                yield f"event: message\n{data_part}\n\n"
+            yield f"event: done\ndata: [DONE]\n\n"
+            log_query(question, "".join(full_answer), get_llm().model)
         except OllamaError as e:
-            yield {
-                "event": "error",
-                "data": str(e),
-            }
+            yield f"event: error\ndata: {str(e)}\n\n"
 
-    return EventSourceResponse(generate())
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 # =============================================================================

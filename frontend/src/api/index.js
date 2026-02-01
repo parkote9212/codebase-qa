@@ -138,77 +138,92 @@ export async function switchModel(model) {
   return response.data
 }
 
-// 활성 EventSource 추적 (메모리 누수 방지)
-let activeEventSource = null
+// 활성 스트리밍 AbortController (취소용)
+let activeStreamController = null
 
 /**
  * 활성 스트리밍 연결 정리
  */
 export function cleanupActiveStream() {
-  if (activeEventSource) {
-    try {
-      activeEventSource.close()
-    } catch (e) {
-      console.warn('EventSource 정리 중 오류:', e)
-    }
-    activeEventSource = null
+  if (activeStreamController) {
+    activeStreamController.abort()
+    activeStreamController = null
   }
 }
 
 /**
- * SSE 스트리밍 질의
+ * SSE 스트리밍 질의 (POST + fetch 스트림, 타자치듯 한 글자씩)
  * @param {string} question - 질문
  * @param {number} topK - 검색할 문서 수
- * @param {function} onMessage - 메시지 콜백
+ * @param {function} onMessage - 메시지 콜백 (chunk)
  * @param {function} onError - 에러 콜백
  * @param {function} onDone - 완료 콜백
- * @returns {{ eventSource: EventSource, cleanup: function }}
+ * @returns {{ abort: function }}
  */
-export function queryCodeStream(question, topK = 5, { onMessage, onError, onDone }) {
-  // 기존 스트림 정리
+export async function queryCodeStream(question, topK = 5, { onMessage, onError, onDone }) {
   cleanupActiveStream()
+  const controller = new AbortController()
+  activeStreamController = controller
 
-  const eventSource = new EventSource(
-    `${API_BASE_URL}/api/query/stream?question=${encodeURIComponent(question)}&top_k=${topK}`,
-  )
-
-  activeEventSource = eventSource
-
-  // 정리 함수
-  const cleanup = () => {
-    if (eventSource.readyState !== EventSource.CLOSED) {
-      eventSource.close()
-    }
-    if (activeEventSource === eventSource) {
-      activeEventSource = null
-    }
+  const abort = () => {
+    controller.abort()
+    if (activeStreamController === controller) activeStreamController = null
   }
 
-  eventSource.onmessage = (event) => {
-    if (event.data === '[DONE]') {
-      cleanup()
-      onDone?.()
-    } else {
-      onMessage?.(event.data)
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/query/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, top_k: topK }),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: response.statusText }))
+      throw new Error(err.detail || `HTTP ${response.status}`)
     }
-  }
 
-  eventSource.onerror = (error) => {
-    cleanup()
-    onError?.(error)
-  }
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
 
-  eventSource.addEventListener('done', () => {
-    cleanup()
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split('\n\n')
+      buffer = parts.pop() || ''
+      for (const block of parts) {
+        if (!block.trim()) continue
+        let event = ''
+        let dataLines = []
+        for (const line of block.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim()
+          else if (line.startsWith('data:')) dataLines.push(line.slice(5))
+        }
+        // data: 여러 줄이면 줄바꿈으로 연결 (SSE 스펙)
+        const data = dataLines.join('\n')
+        if (event === 'message') {
+          onMessage?.(data)
+        } else if (event === 'done' && data.trim() === '[DONE]') {
+          if (activeStreamController === controller) activeStreamController = null
+          onDone?.()
+          return { abort }
+        } else if (event === 'error') {
+          if (activeStreamController === controller) activeStreamController = null
+          onError?.(new Error(data))
+          return { abort }
+        }
+      }
+    }
+    if (activeStreamController === controller) activeStreamController = null
     onDone?.()
-  })
-
-  eventSource.addEventListener('error', (event) => {
-    cleanup()
-    onError?.(event.data)
-  })
-
-  return { eventSource, cleanup }
+  } catch (err) {
+    if (activeStreamController === controller) activeStreamController = null
+    if (err.name === 'AbortError') return { abort }
+    onError?.(err)
+  }
+  return { abort }
 }
 
 export default api

@@ -247,10 +247,11 @@ onUnmounted(() => {
             v-for="message in chatStore.messages"
             :key="message.id"
             :message="message"
+            :is-streaming="chatStore.isLoading && message.role === 'assistant' && message.id === (chatStore.lastMessage?.id)"
           />
 
-          <!-- 로딩 인디케이터 -->
-          <div v-if="chatStore.isLoading" class="flex justify-start">
+          <!-- 로딩 인디케이터 (스트리밍이 아닐 때만: 마지막이 어시스턴트면 이미 위에서 표시) -->
+          <div v-if="chatStore.isLoading && (!chatStore.lastMessage || chatStore.lastMessage.role !== 'assistant')" class="flex justify-start">
             <div class="bg-gray-200 dark:bg-dark-800 rounded-2xl px-5 py-4">
               <div class="flex items-center gap-2">
                 <div class="w-6 h-6 bg-gray-400 dark:bg-dark-600 rounded-lg flex items-center justify-center">

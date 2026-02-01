@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     allowed_browse_paths: str = "/Users/gcpark/code,/Volumes/DEV_DATA/code"
 
     # CORS 설정
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = "http://localhost:5173,http://localhost:5174,http://localhost:5175"
 
     @property
     def cors_origins_list(self) -> list[str]:
