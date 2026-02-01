@@ -199,11 +199,12 @@ async def health():
     "/api/browse",
     tags=["기본"],
     summary="디렉토리 목록 조회",
-    description="지정한 경로의 하위 디렉토리 목록을 반환합니다. 허용된 경로 내에서만 탐색 가능합니다.",
+    description="지정한 경로의 하위 디렉토리 목록을 반환합니다. 쿼리 파라미터: path 또는 name (동일). 허용된 경로 내에서만 탐색 가능합니다.",
 )
-async def browse_directory(path: str = None):
-    """디렉토리 탐색 API"""
-    # 기본 경로 설정
+async def browse_directory(path: str = None, name: str = None):
+    """디렉토리 탐색 API (path 또는 name 쿼리 파라미터)"""
+    # path / name 둘 다 받기 (일부 클라이언트가 name으로 보냄)
+    path = path or name
     if path is None:
         path = settings.allowed_browse_paths_list[0] if settings.allowed_browse_paths_list else "/Users/gcpark/code"
 
@@ -391,6 +392,15 @@ async def cancel_indexing():
     }
 
 
+def _sanitize_project_name(name: str) -> str:
+    """프로젝트명 검증 및 정제 (path traversal 방지)"""
+    import re
+    sanitized = re.sub(r'[^a-zA-Z0-9\-_가-힣]', '', name)
+    if not sanitized:
+        raise HTTPException(status_code=400, detail="유효하지 않은 프로젝트명입니다.")
+    return sanitized[:50]
+
+
 @app.post(
     "/api/index",
     response_model=IndexResponse,
@@ -398,16 +408,6 @@ async def cancel_indexing():
     summary="코드베이스 인덱싱",
     description="지정한 `code_path` 디렉토리를 스캔해 파싱·임베딩 후 ChromaDB에 저장합니다. `force=true`면 기존 인덱스를 덮어씁니다.",
 )
-def sanitize_project_name(name: str) -> str:
-    """프로젝트명 검증 및 정제 (path traversal 방지)"""
-    import re
-    # 허용: 알파벳, 숫자, 하이픈, 언더스코어, 한글
-    sanitized = re.sub(r'[^a-zA-Z0-9\-_가-힣]', '', name)
-    if not sanitized:
-        raise HTTPException(status_code=400, detail="유효하지 않은 프로젝트명입니다.")
-    return sanitized[:50]  # 최대 50자
-
-
 async def index_codebase(request: IndexRequest):
     code_path = Path(request.code_path)
 
@@ -433,7 +433,7 @@ async def index_codebase(request: IndexRequest):
 
     # 프로젝트명 (지정된 경우 사용, 아니면 폴더명) + 검증
     raw_name = request.project_name.strip() if request.project_name else code_path.name
-    project_name = sanitize_project_name(raw_name)
+    project_name = _sanitize_project_name(raw_name)
 
     # 이미 인덱싱 되어 있는지 확인
     retriever = get_retriever()

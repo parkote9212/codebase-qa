@@ -1,7 +1,7 @@
 """API 요청/응답 스키마"""
 
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, model_validator
+from typing import Optional, Any
 
 
 # =============================================================================
@@ -9,15 +9,31 @@ from typing import Optional
 # =============================================================================
 
 class IndexRequest(BaseModel):
-    """인덱싱 요청"""
+    """인덱싱 요청 (code_path/codePath/path, project_name/projectName/name 모두 허용)"""
     code_path: str = Field(..., description="인덱싱할 코드 경로")
-    project_name: Optional[str] = Field(None, description="프로젝트명 (지정하지 않으면 폴더명 사용)")
-    force: bool = Field(False, description="이미 인덱싱된 경우에도 다시 인덱싱")
+    project_name: Optional[str] = Field(default=None, description="프로젝트명")
+    force: bool = Field(default=False, description="강제 재인덱싱")
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_path_and_name_aliases(cls, data: Any) -> Any:
+        """path/codePath → code_path, name/projectName → project_name (클라이언트 변형 대응)"""
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+        code_path = d.get("code_path") or d.get("codePath") or d.get("path")
+        project_name = d.get("project_name") or d.get("projectName") or d.get("name")
+        if code_path is not None:
+            d["code_path"] = code_path
+        if project_name is not None:
+            d["project_name"] = project_name
+        return d
 
     model_config = {
+        "populate_by_name": True,
         "json_schema_extra": {
             "examples": [
-                {"code_path": "/Volumes/DEV_DATA/code/BizSync", "project_name": "BizSync", "force": False}
+                {"code_path": "/Users/gcpark/code/BizSync", "project_name": "BizSync", "force": False}
             ]
         }
     }

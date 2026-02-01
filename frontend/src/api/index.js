@@ -72,11 +72,14 @@ export async function browseDirectory(path = '/Users/gcpark/code') {
  * @param {boolean} force - 강제 재인덱싱 여부
  */
 export async function indexCode(codePath, projectName = null, force = false) {
-  const response = await api.post('/api/index', {
+  const body = {
     code_path: codePath,
-    project_name: projectName,
     force,
-  })
+  }
+  if (projectName != null && projectName !== '') {
+    body.project_name = projectName
+  }
+  const response = await api.post('/api/index', body)
   return response.data
 }
 
